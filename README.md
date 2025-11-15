@@ -1,2 +1,2 @@
-# MITEC
-MITEC hackathon project
+# MITEC- IndyCarb
+MITEC hackathon- Array Project Challenge Track
