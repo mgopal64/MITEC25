@@ -1,6 +1,7 @@
 import pickle
 import pandas as pd
 from pathlib import Path
+from fredapi import Fred
 
 class SteelForecaster:
     def __init__(self):
@@ -48,3 +49,21 @@ def get_forecaster():
     if forecaster is None:
         forecaster = SteelForecaster()
     return forecaster
+
+def get_2024_baseline_value():
+    """
+    Get the steel price index for August 2024 (1982=100 basis)
+    This is used to convert to 2024=100 basis for teammate's script
+    """
+    
+    fred = Fred(api_key='7f3a974235e50830cbadfb41f108ae7f')
+    steel = fred.get_series('WPU101706')
+    
+    # Get August 2024 value
+    try:
+        aug_2024 = steel.loc['2024-08-01']
+        return float(aug_2024)
+    except KeyError:
+        # If exact date not found, get closest
+        steel_2024 = steel['2024']
+        return float(steel_2024.iloc[-1])  # Last value in 2024
