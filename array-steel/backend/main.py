@@ -1,44 +1,63 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from steelpriceforecaster import get_forecaster
 
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent / 'analysis'))
 from procurement_analyzer import run_procurement_analysis
+from procurement_optimizer import calculate_total_costs, generate_pareto_menu
 
 app = FastAPI(title="Steel Calculator API", version="1.0.0")
 
-@app.post("/api/procurement-analysis")
-async def procurement_analysis(
-    scenario: str = 'baseline',
-    months: int = 12,
-    base_price_2024: float = 700.0,
-    sims: int = 10000,
-    vol: float = 0.05,
+class ProcurementAnalysisRequest(BaseModel):
+    scenario: str = 'baseline'
+    months: int = 12
+    base_price_2024: float = 700.0
+    total_steel: float = 10000.0
+    demand_distribution: Optional[List[float]] = None
+    sims: int = 5  # Default to very few for instant response
+    vol: float = 0.05
     hedge_ratio: float = 0.70
-):
+    basis_mu: float = 0.0
+    basis_sigma: float = 0.0
+    seed: int = 7
+
+@app.post("/api/procurement-analysis")
+async def procurement_analysis(request: ProcurementAnalysisRequest):
     """
     Run complete procurement strategy analysis:
     1. Generate steel price forecast
     2. Run Monte Carlo simulations
     3. Compare procurement strategies
     
-    Returns cost summaries for: Buy Now, Spot, Ladder, Hedge
+    Returns cost summaries for: Spot Now, Spot Later, Ladder, Hedge
     """
+    import time
+    start = time.time()
+    print(f"[API] Received request: sims={request.sims}, total_steel={request.total_steel}")
     try:
         results = run_procurement_analysis(
-            scenario=scenario,
-            months=months,
-            base_price_2024=base_price_2024,
-            sims=sims,
-            vol=vol,
-            hedge_ratio=hedge_ratio
+            scenario=request.scenario,
+            months=request.months,
+            base_price_2024=request.base_price_2024,
+            total_steel=request.total_steel,
+            demand_distribution=request.demand_distribution,
+            sims=request.sims,
+            vol=request.vol,
+            hedge_ratio=request.hedge_ratio,
+            basis_mu=request.basis_mu,
+            basis_sigma=request.basis_sigma,
+            seed=request.seed
         )
+        elapsed = time.time() - start
+        print(f"[API] Request completed in {elapsed:.3f}s")
         return results
     except Exception as e:
+        elapsed = time.time() - start
+        print(f"[API] Request failed after {elapsed:.3f}s: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Configure CORS for Next.js frontend
@@ -249,6 +268,72 @@ async def get_sustainable_sourcing(request: SustainableSourcingRequest):
         options = options[:3]
         
         return {"options": options}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class OptimizeProcurementRequest(BaseModel):
+    city: str
+    state: str
+    budget: float
+    demand_tons: float
+    max_suppliers: int = 10
+    n_points: int = 10
+
+@app.post("/api/optimize-procurement")
+async def optimize_procurement(request: OptimizeProcurementRequest):
+    """
+    Generate Pareto-optimal procurement plans based on location, budget, and demand.
+    Returns multiple procurement options trading off cost vs emissions.
+    """
+    try:
+        # Calculate total costs and emissions for all manufacturers
+        results = calculate_total_costs(request.city, request.state)
+        
+        # Prepare DataFrame for Pareto optimization
+        pareto_df = results.copy()
+        pareto_df = pareto_df.rename(columns={
+            "manufacturer_name": "supplier",
+            "cost_per_ton_usd": "cost_per_ton",
+            "carbon_per_ton": "co2_per_ton"
+        })
+        
+        # Generate Pareto menu
+        menu = generate_pareto_menu(
+            pareto_df, 
+            request.demand_tons, 
+            request.budget, 
+            request.max_suppliers,
+            supplier_col="supplier", 
+            cost_col="cost_per_ton", 
+            co2_col="co2_per_ton",
+            exact_k=False, 
+            n_points=request.n_points, 
+            solver_msg=False
+        )
+        
+        # Convert to JSON-serializable format
+        plans = []
+        for idx, row in menu.iterrows():
+            alloc_dict = {k: float(v) for k, v in row['alloc_tons'].items() if v > 1e-6}
+            plans.append({
+                "id": str(idx),
+                "label": row['label'],
+                "total_cost": row['total_cost_$'],
+                "total_emissions": row['total_emissions_tCO2e'],
+                "num_suppliers": int(row['num_suppliers']),
+                "suppliers": row['suppliers'],
+                "alloc_tons": alloc_dict
+            })
+        
+        return {
+            "city": request.city,
+            "state": request.state,
+            "demand_tons": request.demand_tons,
+            "budget": request.budget,
+            "max_suppliers": request.max_suppliers,
+            "plans": plans
+        }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
