@@ -151,8 +151,8 @@ def main():
 
     # 5) Summaries
     summary = pd.DataFrame.from_dict({
-        "BuyNow": summarize(buy_now_costs),
-        "Spot":   summarize(spot_costs),
+        "Spot Now": summarize(buy_now_costs),
+        "Spot Later":   summarize(spot_costs),
         "Ladder": summarize(ladder_costs),
         "Hedge":  summarize(hedge_costs),
     }, orient="index").round(3)
