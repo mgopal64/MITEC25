@@ -44,6 +44,16 @@ interface PurchasingOption {
   breakdown: { category: string; amount: number }[];
 }
 
+// Scenario labels for display
+const SCENARIO_LABELS: { [key: string]: string } = {
+  baseline: 'Baseline',
+  tariffs: 'Tariffs',
+  recession: 'Recession',
+  infrastructure_boom: 'Infrastructure Boom',
+  green_steel: 'Green Steel Boom',
+  tariffs_recession: 'Tariffs + Recession',
+};
+
 export default function ResultsPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -54,6 +64,7 @@ export default function ResultsPage() {
     PurchasingOption[]
   >([]);
   const [loading, setLoading] = useState(true);
+  const [selectedScenario, setSelectedScenario] = useState<string>('baseline');
 
   useEffect(() => {
     const storedProjects = localStorage.getItem('projects');
@@ -64,10 +75,75 @@ export default function ResultsPage() {
 
     const parsedProjects = JSON.parse(storedProjects);
     setProjects(parsedProjects);
-    fetchResults(parsedProjects);
+    fetchResults(parsedProjects, selectedScenario);
   }, [router]);
 
-  const fetchResults = async (projectsData: Project[]) => {
+  // Refetch forecast when scenario changes
+  useEffect(() => {
+    if (projects.length > 0) {
+      fetchForecastData(selectedScenario);
+      fetchPurchasingOptions(selectedScenario);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedScenario]);
+
+  const fetchForecastData = async (scenario: string) => {
+    try {
+      const forecastResponse = await fetch('http://localhost:8000/api/steel-forecast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenario, months: 12 }),
+      });
+      const forecastResult = await forecastResponse.json();
+      const data = forecastResult.data || [];
+      console.log('Forecast data received:', data.slice(0, 3), '...', data.slice(-3));
+      console.log('Historical count:', data.filter((d: SteelPrice) => d.is_historical).length);
+      console.log('Forecast count:', data.filter((d: SteelPrice) => !d.is_historical).length);
+      setForecastData(data);
+    } catch (error) {
+      console.error('Error fetching forecast data:', error);
+      // Use mock data as fallback
+      setForecastData(getMockForecastData());
+    }
+  };
+
+  const fetchPurchasingOptions = async (scenario: string) => {
+    try {
+      const totalSteel = projects.reduce(
+        (sum, p) => sum + parseFloat(p.steelRequired || '0'),
+        0
+      );
+      const purchasingResponse = await fetch(
+        'http://localhost:8000/api/procurement-analysis',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scenario,
+            months: 12,
+            base_price_2024: 700.0,
+            sims: 10000,
+            vol: 0.05,
+            hedge_ratio: 0.70,
+          }),
+        }
+      );
+      const purchasingResult = await purchasingResponse.json();
+      processPurchasingOptions(purchasingResult, totalSteel);
+    } catch (error) {
+      console.error('Error fetching purchasing options:', error);
+      // Use mock data if API fails
+      if (projects.length > 0) {
+        const totalSteel = projects.reduce(
+          (sum, p) => sum + parseFloat(p.steelRequired || '0'),
+          0
+        );
+        setPurchasingOptions(getMockPurchasingOptions(projects));
+      }
+    }
+  };
+
+  const fetchResults = async (projectsData: Project[], scenario: string = 'baseline') => {
     setLoading(true);
     try {
       // Calculate total steel and budget
@@ -81,17 +157,7 @@ export default function ResultsPage() {
       );
 
       // Fetch forecast data
-      const forecastResponse = await fetch('http://localhost:8000/api/steel-forecast', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scenario: 'baseline', months: 12 }),
-      });
-      const forecastResult = await forecastResponse.json();
-      const data = forecastResult.data || [];
-      console.log('Forecast data received:', data.slice(0, 3), '...', data.slice(-3));
-      console.log('Historical count:', data.filter((d: SteelPrice) => d.is_historical).length);
-      console.log('Forecast count:', data.filter((d: SteelPrice) => !d.is_historical).length);
-      setForecastData(data);
+      await fetchForecastData(scenario);
 
       // Fetch sustainable sourcing options
       const sourcingResponse = await fetch(
@@ -110,23 +176,7 @@ export default function ResultsPage() {
       setSourcingOptions(sourcingResult.options || []);
 
       // Fetch purchasing options
-      const purchasingResponse = await fetch(
-        'http://localhost:8000/api/procurement-analysis',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            scenario: 'baseline',
-            months: 12,
-            base_price_2024: 700.0,
-            sims: 10000,
-            vol: 0.05,
-            hedge_ratio: 0.70,
-          }),
-        }
-      );
-      const purchasingResult = await purchasingResponse.json();
-      processPurchasingOptions(purchasingResult, totalSteel);
+      await fetchPurchasingOptions(scenario);
     } catch (error) {
       console.error('Error fetching results:', error);
       // Use mock data if API fails
@@ -142,33 +192,52 @@ export default function ResultsPage() {
 
   const processPurchasingOptions = (data: any, totalSteel: number) => {
     const summary = data.summary || {};
+    
+    // Helper to convert millions to dollars
+    // Backend returns values in millions (e.g., 71.4 = $71.4 million)
+    const millionsToDollars = (value: number | undefined, fallbackPerTon: number) => {
+      if (value !== undefined && value !== null && !isNaN(value)) {
+        return value * 1e6; // Convert millions to dollars
+      }
+      return fallbackPerTon * totalSteel; // Fallback: per-ton cost
+    };
+    
+    // Try both key formats (mean_$M from backend, or mean as fallback)
+    const buyNowMean = summary['Buy Now']?.mean_$M ?? summary['Buy Now']?.mean;
+    const ladderMean = summary['Ladder']?.mean_$M ?? summary['Ladder']?.mean;
+    const hedgeMean = summary['Hedge']?.mean_$M ?? summary['Hedge']?.mean;
+    
+    const spotTotal = millionsToDollars(buyNowMean, 700);
+    const ladderTotal = millionsToDollars(ladderMean, 680);
+    const hedgeTotal = millionsToDollars(hedgeMean, 690);
+    
     const options: PurchasingOption[] = [
       {
         name: 'Spot Purchasing',
         description: 'Purchase steel at current market prices as needed',
-        totalCost: (summary['Buy Now']?.mean || 700 * totalSteel) * totalSteel,
+        totalCost: spotTotal,
         breakdown: [
-          { category: 'Base Cost', amount: 700 * totalSteel },
-          { category: 'Market Risk', amount: 50 * totalSteel },
+          { category: 'Base Cost', amount: spotTotal * 0.93 }, // ~93% base cost
+          { category: 'Market Risk', amount: spotTotal * 0.07 }, // ~7% market risk
         ],
       },
       {
         name: 'Volume-Commit / Fixed-Spread Physical Steel Contracts',
         description: 'Lock in prices through forward contracts with suppliers',
-        totalCost: (summary['Ladder']?.mean || 680 * totalSteel) * totalSteel,
+        totalCost: ladderTotal,
         breakdown: [
-          { category: 'Contract Cost', amount: 680 * totalSteel },
-          { category: 'Contract Premium', amount: 20 * totalSteel },
+          { category: 'Contract Cost', amount: ladderTotal * 0.97 },
+          { category: 'Contract Premium', amount: ladderTotal * 0.03 },
         ],
       },
       {
         name: 'Financial Hedging (HRC Futures / Swaps)',
         description: 'Hedge price risk using financial derivatives',
-        totalCost: (summary['Hedge']?.mean || 690 * totalSteel) * totalSteel,
+        totalCost: hedgeTotal,
         breakdown: [
-          { category: 'Spot Cost', amount: 690 * totalSteel },
-          { category: 'Hedge Premium', amount: 15 * totalSteel },
-          { category: 'Hedge Cost', amount: 5 * totalSteel },
+          { category: 'Spot Cost', amount: hedgeTotal * 0.98 },
+          { category: 'Hedge Premium', amount: hedgeTotal * 0.015 },
+          { category: 'Hedge Cost', amount: hedgeTotal * 0.005 },
         ],
       },
     ];
@@ -538,13 +607,34 @@ export default function ResultsPage() {
           <div className="space-y-6">
             {/* Forecast Graph */}
             <div className="rounded-lg bg-white p-6 shadow-sm">
-              <h3 className="mb-4 text-xl font-semibold text-gray-900">
-                12-Month Steel Price Forecast
-              </h3>
-              <p className="mb-6 text-sm text-gray-600">
-                Historical and forecasted steel price index (1982 = 100) based on time series
-                analysis.
-              </p>
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">
+                    12-Month Steel Price Forecast
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Historical and forecasted steel price index (1982 = 100) based on time series
+                    analysis.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <label htmlFor="scenario-select" className="text-sm font-medium text-gray-700">
+                    Scenario:
+                  </label>
+                  <select
+                    id="scenario-select"
+                    value={selectedScenario}
+                    onChange={(e) => setSelectedScenario(e.target.value)}
+                    className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+                  >
+                    {Object.entries(SCENARIO_LABELS).map(([key, label]) => (
+                      <option key={key} value={key}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               <div className="h-[600px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart 

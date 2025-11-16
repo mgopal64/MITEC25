@@ -11,6 +11,61 @@ interface Project {
   dueDate: string;
 }
 
+// Major US cities for autocomplete
+const US_CITIES = [
+  'New York, New York',
+  'Los Angeles, California',
+  'Chicago, Illinois',
+  'Houston, Texas',
+  'Phoenix, Arizona',
+  'Philadelphia, Pennsylvania',
+  'San Antonio, Texas',
+  'San Diego, California',
+  'Dallas, Texas',
+  'San Jose, California',
+  'Austin, Texas',
+  'Jacksonville, Florida',
+  'Fort Worth, Texas',
+  'Columbus, Ohio',
+  'Charlotte, North Carolina',
+  'San Francisco, California',
+  'Indianapolis, Indiana',
+  'Seattle, Washington',
+  'Denver, Colorado',
+  'Washington, District of Columbia',
+  'Boston, Massachusetts',
+  'El Paso, Texas',
+  'Nashville, Tennessee',
+  'Detroit, Michigan',
+  'Oklahoma City, Oklahoma',
+  'Portland, Oregon',
+  'Las Vegas, Nevada',
+  'Memphis, Tennessee',
+  'Louisville, Kentucky',
+  'Baltimore, Maryland',
+  'Milwaukee, Wisconsin',
+  'Albuquerque, New Mexico',
+  'Tucson, Arizona',
+  'Fresno, California',
+  'Sacramento, California',
+  'Kansas City, Missouri',
+  'Mesa, Arizona',
+  'Atlanta, Georgia',
+  'Omaha, Nebraska',
+  'Colorado Springs, Colorado',
+  'Raleigh, North Carolina',
+  'Virginia Beach, Virginia',
+  'Miami, Florida',
+  'Oakland, California',
+  'Minneapolis, Minnesota',
+  'Tulsa, Oklahoma',
+  'Cleveland, Ohio',
+  'Wichita, Kansas',
+  'Arlington, Texas',
+  'Tampa, Florida',
+  'New Orleans, Louisiana',
+];
+
 export default function Home() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([
@@ -22,6 +77,8 @@ export default function Home() {
       dueDate: '',
     },
   ]);
+  const [locationSuggestions, setLocationSuggestions] = useState<{ [key: string]: string[] }>({});
+  const [showSuggestions, setShowSuggestions] = useState<{ [key: string]: boolean }>({});
 
   const addProject = () => {
     setProjects([
@@ -40,6 +97,25 @@ export default function Home() {
     setProjects(
       projects.map((p) => (p.id === id ? { ...p, [field]: value } : p))
     );
+    
+    // Handle location autocomplete
+    if (field === 'location') {
+      if (value.length > 0) {
+        const filtered = US_CITIES.filter(city =>
+          city.toLowerCase().includes(value.toLowerCase())
+        ).slice(0, 5);
+        setLocationSuggestions(prev => ({ ...prev, [id]: filtered }));
+        setShowSuggestions(prev => ({ ...prev, [id]: true }));
+      } else {
+        setLocationSuggestions(prev => ({ ...prev, [id]: [] }));
+        setShowSuggestions(prev => ({ ...prev, [id]: false }));
+      }
+    }
+  };
+
+  const selectLocation = (id: string, city: string) => {
+    updateProject(id, 'location', city);
+    setShowSuggestions(prev => ({ ...prev, [id]: false }));
   };
 
   const handleSubmit = () => {
@@ -109,7 +185,7 @@ export default function Home() {
             <div className="space-y-6">
               {/* Project Location */}
               <div>
-                <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+                <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900">
                   <svg
                     className="h-5 w-5 text-gray-500"
                     fill="none"
@@ -131,23 +207,53 @@ export default function Home() {
                   </svg>
                   Project Location
                 </label>
-                <input
-                  type="text"
-                  placeholder="e.g., Phoenix, Arizona"
-                  value={project.location}
-                  onChange={(e) =>
-                    updateProject(project.id, 'location', e.target.value)
-                  }
-                  className="mt-1 w-full rounded-md border border-gray-300 px-4 py-2 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-0"
-                />
-                <p className="mt-1 text-xs text-gray-500">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="e.g., Phoenix, Arizona"
+                    value={project.location}
+                    onChange={(e) =>
+                      updateProject(project.id, 'location', e.target.value)
+                    }
+                    onBlur={() => {
+                      // Delay hiding suggestions to allow click on suggestion
+                      setTimeout(() => {
+                        setShowSuggestions(prev => ({ ...prev, [project.id]: false }));
+                      }, 200);
+                    }}
+                    onFocus={() => {
+                      if (locationSuggestions[project.id]?.length > 0) {
+                        setShowSuggestions(prev => ({ ...prev, [project.id]: true }));
+                      }
+                    }}
+                    className="mt-1 w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder:text-gray-500 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-0"
+                  />
+                  {showSuggestions[project.id] && locationSuggestions[project.id]?.length > 0 && (
+                    <div className="absolute z-10 mt-1 w-full rounded-md border border-gray-300 bg-white shadow-lg">
+                      {locationSuggestions[project.id].map((city, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault(); // Prevent input blur
+                            selectLocation(project.id, city);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-900 hover:bg-gray-100 first:rounded-t-md last:rounded-b-md"
+                        >
+                          {city}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-900">
                   Where will the solar panels be installed?
                 </p>
               </div>
 
               {/* Budget */}
               <div>
-                <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+                <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900">
                   <svg
                     className="h-5 w-5 text-gray-500"
                     fill="none"
@@ -170,16 +276,16 @@ export default function Home() {
                   onChange={(e) =>
                     updateProject(project.id, 'budget', e.target.value)
                   }
-                  className="mt-1 w-full rounded-md border border-gray-300 px-4 py-2 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-0"
+                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder:text-gray-500 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-0"
                 />
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-gray-900">
                   Total budget allocated for this project's steel procurement
                 </p>
               </div>
 
               {/* Steel Required */}
               <div>
-                <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+                <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900">
                   <svg
                     className="h-5 w-5 text-gray-500"
                     fill="none"
@@ -202,16 +308,16 @@ export default function Home() {
                   onChange={(e) =>
                     updateProject(project.id, 'steelRequired', e.target.value)
                   }
-                  className="mt-1 w-full rounded-md border border-gray-300 px-4 py-2 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-0"
+                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder:text-gray-500 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-0"
                 />
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-gray-900">
                   Total amount of steel needed for this project
                 </p>
               </div>
 
               {/* Due Date */}
               <div>
-                <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+                <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900">
                   <svg
                     className="h-5 w-5 text-gray-500"
                     fill="none"
@@ -233,9 +339,9 @@ export default function Home() {
                   onChange={(e) =>
                     updateProject(project.id, 'dueDate', e.target.value)
                   }
-                  className="mt-1 w-full rounded-md border border-gray-300 px-4 py-2 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-0"
+                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder:text-gray-500 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-0"
                 />
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-gray-900">
                   When the steel needs to be delivered (must be a future date)
                 </p>
               </div>
