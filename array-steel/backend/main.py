@@ -4,7 +4,42 @@ from pydantic import BaseModel
 from typing import List
 from steelpriceforecaster import get_forecaster
 
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent / 'analysis'))
+from procurement_analyzer import run_procurement_analysis
+
 app = FastAPI(title="Steel Calculator API", version="1.0.0")
+
+@app.post("/api/procurement-analysis")
+async def procurement_analysis(
+    scenario: str = 'baseline',
+    months: int = 12,
+    base_price_2024: float = 700.0,
+    sims: int = 10000,
+    vol: float = 0.05,
+    hedge_ratio: float = 0.70
+):
+    """
+    Run complete procurement strategy analysis:
+    1. Generate steel price forecast
+    2. Run Monte Carlo simulations
+    3. Compare procurement strategies
+    
+    Returns cost summaries for: Buy Now, Spot, Ladder, Hedge
+    """
+    try:
+        results = run_procurement_analysis(
+            scenario=scenario,
+            months=months,
+            base_price_2024=base_price_2024,
+            sims=sims,
+            vol=vol,
+            hedge_ratio=hedge_ratio
+        )
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Configure CORS for Next.js frontend
 app.add_middleware(

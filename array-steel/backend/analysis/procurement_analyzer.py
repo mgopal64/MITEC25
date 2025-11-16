@@ -1,0 +1,104 @@
+# analysis/procurement_analyzer.py
+import pandas as pd
+import sys
+from pathlib import Path
+import subprocess
+
+# Add parent directory to path to import forecaster
+sys.path.append(str(Path(__file__).parent.parent))
+from steelpriceforecaster import get_forecaster
+
+def generate_forecast_csv(scenario: str = 'baseline', 
+                          months: int = 12,
+                          output_path: Path = Path('forecast_data.csv')):
+    """
+    Generate CSV from ARIMA forecast in the format teammate's script expects:
+    Month, Year, Steel_Price_Index_(2024=100)
+    """
+    # Get forecast from your model
+    forecaster = get_forecaster()
+    forecast_data = forecaster.forecast(scenario, months)
+    
+    # Convert to DataFrame
+    df = pd.DataFrame(forecast_data)
+    
+    # Add Month name column
+    month_names = {
+        1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun',
+        7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'
+    }
+    df['Month'] = df['month'].map(month_names)
+    
+    # Rename columns to match teammate's format
+    df = df.rename(columns={
+        'year': 'Year',
+        'steel_price_index': 'Steel_Price_Index_(2024=100)'
+    })
+    
+    # Select and reorder columns
+    df = df[['Month', 'Year', 'Steel_Price_Index_(2024=100)']]
+    
+    # Save CSV
+    df.to_csv(output_path, index=False)
+    print(f"✓ Saved forecast CSV to {output_path}")
+    
+    return output_path
+
+def run_procurement_analysis(scenario: str = 'baseline',
+                             months: int = 12,
+                             base_price_2024: float = 700.0,
+                             sims: int = 10000,
+                             vol: float = 0.05,
+                             hedge_ratio: float = 0.70):
+    """
+    Complete workflow:
+    1. Generate forecast CSV from your model
+    2. Run Monte Carlo analysis
+    3. Return results
+    """
+    # Generate forecast CSV
+    csv_path = Path(__file__).parent / f'forecast_{scenario}.csv'
+    generate_forecast_csv(scenario, months, csv_path)
+    
+    # Run teammate's Monte Carlo script
+    script_path = Path(__file__).parent / 'steel_scenarios_from_csv.py'
+    outdir = Path(__file__).parent / 'output'
+    
+    cmd = [
+        'python', str(script_path),
+        '--csv', str(csv_path),
+        '--base-price-2024', str(base_price_2024),
+        '--sims', str(sims),
+        '--vol', str(vol),
+        '--hedge-ratio', str(hedge_ratio),
+        '--outdir', str(outdir),
+        '--no-plots'  # Skip interactive plots for API
+    ]
+    
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        raise Exception(f"Monte Carlo failed: {result.stderr}")
+    
+    # Read results
+    summary_path = outdir / 'strategy_summary.csv'
+    summary = pd.read_csv(summary_path, index_col=0)
+    
+    return {
+        'scenario': scenario,
+        'summary': summary.to_dict(),
+        'forecast_csv': str(csv_path),
+        'results_dir': str(outdir)
+    }
+
+# Test function
+if __name__ == '__main__':
+    # Test with baseline scenario
+    results = run_procurement_analysis(
+        scenario='baseline',
+        months=12,
+        base_price_2024=700.0,
+        sims=1000  # Fewer for testing
+    )
+    print("\nProcurement Analysis Results:")
+    print(results['summary'])
