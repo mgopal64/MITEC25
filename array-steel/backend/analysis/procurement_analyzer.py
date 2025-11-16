@@ -6,29 +6,21 @@ import subprocess
 
 # Add parent directory to path to import forecaster
 sys.path.append(str(Path(__file__).parent.parent))
-from steelpriceforecaster import get_forecaster, get_2024_baseline_value
+from steelpriceforecaster import get_forecaster
 
 def generate_forecast_csv(scenario: str = 'baseline', 
                           months: int = 12,
                           output_path: Path = Path('forecast_data.csv')):
     """
-    Generate CSV from ARIMA forecast, converting from 1982=100 to 2024=100 basis
+    Generate CSV from ARIMA forecast in the format teammate's script expects:
+    Month, Year, Steel_Price_Index_(1982=100)
     """
-    # Get 2024 baseline value (1982=100 basis)
-    baseline_1982 = get_2024_baseline_value()
-    print(f"Aug 2024 baseline: {baseline_1982:.2f} (1982=100 basis)")
-    
-    # Get forecast from your model (1982=100 basis)
+    # Get forecast from your model
     forecaster = get_forecaster()
     forecast_data = forecaster.forecast(scenario, months)
     
     # Convert to DataFrame
     df = pd.DataFrame(forecast_data)
-    
-    # CRITICAL CONVERSION: Re-base from 1982=100 to 2024=100
-    df['Steel_Price_Index_(2024=100)'] = (df['steel_price_index'] / baseline_1982) * 100
-    
-    print(f"Converted index range (2024=100): {df['Steel_Price_Index_(2024=100)'].min():.2f} to {df['Steel_Price_Index_(2024=100)'].max():.2f}")
     
     # Add Month name column
     month_names = {
@@ -36,10 +28,15 @@ def generate_forecast_csv(scenario: str = 'baseline',
         7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'
     }
     df['Month'] = df['month'].map(month_names)
-    df['Year'] = df['year']
     
-    # Select columns in exact order teammate expects
-    output_df = df[['Month', 'Year', 'Steel_Price_Index_(2024=100)']]
+    # Rename columns to match teammate's format
+    df = df.rename(columns={
+        'year': 'Year',
+        'steel_price_index': 'Steel_Price_Index_(1982=100)'
+    })
+    
+    # Select and reorder columns
+    output_df = df[['Month', 'Year', 'Steel_Price_Index_(1982=100)']]
     
     # Save CSV
     output_df.to_csv(output_path, index=False)

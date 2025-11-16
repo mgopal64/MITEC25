@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Calculate My Steel",
-  description: "Calculate steel for your project",
+  title: "SteelAdvisory - Optimize Your Steel Procurement",
+  description: "Get personalized steel sourcing recommendations that balance cost and sustainability",
 };
 
 export default function RootLayout({
