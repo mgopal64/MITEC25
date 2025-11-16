@@ -13,7 +13,7 @@ def generate_forecast_csv(scenario: str = 'baseline',
                           output_path: Path = Path('forecast_data.csv')):
     """
     Generate CSV from ARIMA forecast in the format teammate's script expects:
-    Month, Year, Steel_Price_Index_(2024=100)
+    Month, Year, Steel_Price_Index_(1982=100)
     """
     # Get forecast from your model
     forecaster = get_forecaster()
@@ -32,11 +32,11 @@ def generate_forecast_csv(scenario: str = 'baseline',
     # Rename columns to match teammate's format
     df = df.rename(columns={
         'year': 'Year',
-        'steel_price_index': 'Steel_Price_Index_(2024=100)'
+        'steel_price_index': 'Steel_Price_Index_(1982=100)'
     })
     
     # Select and reorder columns
-    df = df[['Month', 'Year', 'Steel_Price_Index_(2024=100)']]
+    df = df[['Month', 'Year', 'Steel_Price_Index_(1982=100)']]
     
     # Save CSV
     df.to_csv(output_path, index=False)

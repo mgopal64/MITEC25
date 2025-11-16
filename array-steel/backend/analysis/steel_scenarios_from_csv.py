@@ -18,19 +18,19 @@ def read_baseline_prices(csv_path: Path, base_price_2024: float) -> pd.Series:
     Read a CSV with columns:
       - Month (e.g., Jan, Feb, ...)
       - Year  (int)
-      - Steel_Price_Index_(2024=100)  (float)
+      - Steel_Price_Index_(1982=100)  (float)
     Convert the index to $/ton using base_price_2024 (i.e., when index=100).
     Returns the last 12 months as a pandas Series of $/ton (baseline path).
     """
     df = pd.read_csv(csv_path)
-    if not {"Month","Year","Steel_Price_Index_(2024=100)"} <= set(df.columns):
-        raise ValueError("CSV must contain Month, Year, Steel_Price_Index_(2024=100) columns")
+    if not {"Month","Year","Steel_Price_Index_(1982=100)"} <= set(df.columns):
+        raise ValueError("CSV must contain Month, Year, Steel_Price_Index_(1982=100) columns")
 
     df["MonthNum"] = df["Month"].map(MONTH_MAP)
     df["Date"] = pd.to_datetime(dict(year=df["Year"], month=df["MonthNum"], day=1))
     df = df.sort_values("Date").reset_index(drop=True)
 
-    idx_col = "Steel_Price_Index_(2024=100)"
+    idx_col = "Steel_Price_Index_(1982=100)"
     df["Price_per_ton"] = (df[idx_col] / 100.0) * base_price_2024
 
     last12 = df.tail(12).copy()
@@ -104,8 +104,8 @@ def summarize(arr: np.ndarray) -> dict:
 # -----------------------------
 def main():
     ap = argparse.ArgumentParser(description="Steel procurement scenarios from CSV index.")
-    ap.add_argument("--csv", required=True, type=Path, help="Path to CSV with Month, Year, Steel_Price_Index_(2024=100)")
-    ap.add_argument("--base-price-2024", type=float, default=700.0, help="$/ton when index=100 (2024 base)")
+    ap.add_argument("--csv", required=True, type=Path, help="Path to CSV with Month, Year, Steel_Price_Index_(1982=100)")
+    ap.add_argument("--base-price-2024", type=float, default=700.0, help="$/ton when index=100 (1982 base)")
     ap.add_argument("--sims", type=int, default=10_000, help="Number of Monte Carlo simulations")
     ap.add_argument("--vol", type=float, default=0.05, help="Monthly volatility (e.g., 0.05 = 5%)")
     ap.add_argument("--hedge-ratio", type=float, default=0.70, help="Hedge ratio for hedge strategy (0..1)")
