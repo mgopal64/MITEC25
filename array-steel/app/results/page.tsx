@@ -203,7 +203,8 @@ export default function ResultsPage() {
       
       const totalSteel = projectsData.reduce(
         (sum, p) => {
-          const steel = parseFloat(p.steelRequired || p.steel_required || '0');
+          //const steel = parseFloat(p.steelRequired || p.steel_required || '0');
+          const steel = parseFloat(p.steelRequired || '0');
           console.log(`Project ${p.id || 'unknown'}: steelRequired="${p.steelRequired}", parsed=${steel}`);
           return sum + steel;
         },
