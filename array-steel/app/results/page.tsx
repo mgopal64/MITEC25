@@ -16,6 +16,8 @@ import {
   Cell,
 } from 'recharts';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 interface Project {
   id: string;
   location: string;
@@ -177,7 +179,7 @@ export default function ResultsPage() {
 
   const fetchForecastData = async (scenario: string) => {
     try {
-      const forecastResponse = await fetch('http://localhost:8000/api/steel-forecast', {
+      const forecastResponse = await fetch(`${API_URL}/api/steel-forecast`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scenario, months: 12 }),
@@ -231,7 +233,7 @@ export default function ResultsPage() {
       
       try {
         const purchasingResponse = await fetch(
-          'http://localhost:8000/api/procurement-analysis',
+          `${API_URL}/api/procurement-analysis`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -349,7 +351,7 @@ export default function ResultsPage() {
     setSelectedPlan(null);
     
     try {
-      const response = await fetch('http://localhost:8000/api/optimize-procurement', {
+      const response = await fetch(`${API_URL}/api/optimize-procurement`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
