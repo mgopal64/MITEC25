@@ -13,13 +13,13 @@ from procurement_optimizer import calculate_total_costs, generate_pareto_menu
 app = FastAPI(title="Steel Calculator API", version="1.0.0")
 
 # Add CORS - RIGHT HERE, RIGHT AFTER app = FastAPI()
+# Add CORS - use regex to match all Vercel deployments
 app.add_middleware(
     CORSMiddleware,
+    allow_origin_regex=r"https://.*\.vercel\.app",  # Matches all Vercel URLs
     allow_origins=[
-        "https://mitec-25.vercel.app",      # Your Vercel URL
-        "https://*.vercel.app",              # All Vercel deployments
-        "http://localhost:3000",             # Local dev frontend
-        "http://127.0.0.1:3000",            # Local dev (alternative)
+        "http://localhost:3000",              # Local dev
+        "http://127.0.0.1:3000",             # Local dev alternative
         "http://localhost:8000",             # Local backend
     ],
     allow_credentials=True,
