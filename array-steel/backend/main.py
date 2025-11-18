@@ -12,6 +12,21 @@ from procurement_optimizer import calculate_total_costs, generate_pareto_menu
 
 app = FastAPI(title="Steel Calculator API", version="1.0.0")
 
+# Add CORS - RIGHT HERE, RIGHT AFTER app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://mitec-25.vercel.app",      # Your Vercel URL
+        "https://*.vercel.app",              # All Vercel deployments
+        "http://localhost:3000",             # Local dev frontend
+        "http://127.0.0.1:3000",            # Local dev (alternative)
+        "http://localhost:8000",             # Local backend
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 class ProcurementAnalysisRequest(BaseModel):
     scenario: str = 'baseline'
     months: int = 12
@@ -60,18 +75,18 @@ async def procurement_analysis(request: ProcurementAnalysisRequest):
         print(f"[API] Request failed after {elapsed:.3f}s: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Configure CORS for Next.js frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# # Configure CORS for Next.js frontend
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=[
+#         "http://localhost:3000",
+#         "http://127.0.0.1:3000",
+#         "http://localhost:3001",
+#     ],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 class ForecastRequest(BaseModel):
     scenario: str = 'baseline'
