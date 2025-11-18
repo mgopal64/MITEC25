@@ -21,55 +21,89 @@ PORTS = [
     {"name": "Long Beach", "coords": (33.7549, -118.2143)}
 ]
 
+# City coordinates cache
+CITY_COORDS = {
+    ('Phoenix', 'Arizona'): (33.4484, -112.0740),
+    ('Los Angeles', 'California'): (34.0522, -118.2437),
+    ('San Francisco', 'California'): (37.7749, -122.4194),
+    ('San Diego', 'California'): (32.7157, -117.1611),
+    ('New York', 'New York'): (40.7128, -74.0060),
+    ('Chicago', 'Illinois'): (41.8781, -87.6298),
+    ('Houston', 'Texas'): (29.7604, -95.3698),
+    ('Dallas', 'Texas'): (32.7767, -96.7970),
+    ('Austin', 'Texas'): (30.2672, -97.7431),
+    ('Seattle', 'Washington'): (47.6062, -122.3321),
+    ('Portland', 'Oregon'): (45.5152, -122.6784),
+    ('Denver', 'Colorado'): (39.7392, -104.9903),
+    ('Miami', 'Florida'): (25.7617, -80.1918),
+    ('Atlanta', 'Georgia'): (33.7490, -84.3880),
+    ('Boston', 'Massachusetts'): (42.3601, -71.0589),
+    ('Detroit', 'Michigan'): (42.3314, -83.0458),
+    ('Ann Arbor', 'Michigan'): (42.2808, -83.7430),
+    ('Philadelphia', 'Pennsylvania'): (39.9526, -75.1652),
+    ('Minneapolis', 'Minnesota'): (44.9778, -93.2650),
+    ('Las Vegas', 'Nevada'): (36.1699, -115.1398),
+}
+
 # Global variables for loaded data (loaded once)
 _df = None
 _ports_calculated = False
 
 def geocode_city_state(city, state):
-    """Geocode city and state to latitude/longitude coordinates."""
-    url = "https://nominatim.openstreetmap.org/search"
+    """
+    Get coordinates for a city/state.
+    - On localhost: tries API, falls back to cache
+    - On Render: uses cache only
+    """
+    key = (city, state)
+    is_local = os.getenv('RENDER') is None
     
-    params = {
-        "city": city,
-        "state": state,
-        "country": "USA",
-        "format": "json",
-        "limit": 1
-    }
+    # Try cache first
+    if key in CITY_COORDS:
+        return CITY_COORDS[key]
     
-    headers = {
-        "User-Agent": "MITEC/1.0 (nibhatt@g.hmc.edu)"
-    }
+    # Only try API on localhost
+    if is_local:
+        try:
+            url = "https://nominatim.openstreetmap.org/search"
+            params = {'city': city, 'state': state, 'country': 'USA', 'format': 'json', 'limit': 1}
+            headers = {'User-Agent': 'MITEC/1.0'}
+            time.sleep(1)  # Rate limit
+            r = requests.get(url, params=params, headers=headers, timeout=5)
+            if r.status_code == 200 and r.json():
+                data = r.json()
+                return (float(data[0]['lat']), float(data[0]['lon']))
+        except Exception as e:
+            print(f"[GEOCODE] API failed: {e}")
     
-    # Nominatim requires a delay of 1 request/second
-    time.sleep(1)
-    
-    r = requests.get(url, params=params, headers=headers)
-    data = r.json()
-    
-    if not data:
-        return None
-    
-    return float(data[0]["lat"]), float(data[0]["lon"])
+    # Fallback
+    return (39.8283, -98.5795)
 
 def get_driving_distance(origin, destination, api_key=None):
     """
-    Calculate driving distance using a routing API.
-    Uses OSRM as it's free and doesn't require an API key.
+    Calculate driving distance.
+    - On localhost: tries OSRM API, falls back to geodesic
+    - On Render: uses geodesic approximation (great circle * 1.3)
     """
-    url = f"https://router.project-osrm.org/route/v1/driving/{origin[1]},{origin[0]};{destination[1]},{destination[0]}"
-    params = {"overview": "false"}
+    is_local = os.getenv('RENDER') is None
     
+    # On Render, skip API and use approximation
+    if not is_local:
+        return geodesic(origin, destination).kilometers * 1.3
+    
+    # On localhost, try API
     try:
-        response = requests.get(url, params=params, timeout=10)
+        url = f"https://router.project-osrm.org/route/v1/driving/{origin[1]},{origin[0]};{destination[1]},{destination[0]}"
+        response = requests.get(url, params={"overview": "false"}, timeout=10)
         data = response.json()
         
         if data["code"] == "Ok":
-            return data["routes"][0]["distance"] / 1000  # Convert meters to km
-        else:
-            return geodesic(origin, destination).kilometers * 1.3
-    except:
-        return geodesic(origin, destination).kilometers * 1.3
+            return data["routes"][0]["distance"] / 1000
+    except Exception as e:
+        print(f"[ROUTING] API failed, using geodesic: {e}")
+    
+    # Fallback to geodesic approximation
+    return geodesic(origin, destination).kilometers * 1.3
 
 def load_manufacturer_data(csv_path=None):
     """Load and preprocess manufacturer data."""
