@@ -4,6 +4,7 @@ from geopy.distance import geodesic
 import requests
 import time
 import pulp
+import os
 from pathlib import Path
 
 # Transportation cost and emissions factors (averages)
