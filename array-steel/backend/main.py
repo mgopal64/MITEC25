@@ -301,19 +301,27 @@ async def optimize_procurement(request: OptimizeProcurementRequest):
     Generate Pareto-optimal procurement plans based on location, budget, and demand.
     Returns multiple procurement options trading off cost vs emissions.
     """
+    import traceback
     try:
+        print(f"[OPTIMIZE] Received request: city={request.city}, state={request.state}, demand={request.demand_tons}, budget={request.budget}")
+        
         # Calculate total costs and emissions for all manufacturers
+        print(f"[OPTIMIZE] Step 1: Calling calculate_total_costs...")
         results = calculate_total_costs(request.city, request.state)
+        print(f"[OPTIMIZE] Step 1 complete: Got {len(results)} manufacturers")
         
         # Prepare DataFrame for Pareto optimization
+        print(f"[OPTIMIZE] Step 2: Preparing DataFrame...")
         pareto_df = results.copy()
         pareto_df = pareto_df.rename(columns={
             "manufacturer_name": "supplier",
             "cost_per_ton_usd": "cost_per_ton",
             "carbon_per_ton": "co2_per_ton"
         })
+        print(f"[OPTIMIZE] Step 2 complete: DataFrame has {len(pareto_df)} rows")
         
         # Generate Pareto menu
+        print(f"[OPTIMIZE] Step 3: Calling generate_pareto_menu...")
         menu = generate_pareto_menu(
             pareto_df, 
             request.demand_tons, 
@@ -326,8 +334,10 @@ async def optimize_procurement(request: OptimizeProcurementRequest):
             n_points=request.n_points, 
             solver_msg=False
         )
+        print(f"[OPTIMIZE] Step 3 complete: Generated {len(menu)} plans")
         
         # Convert to JSON-serializable format
+        print(f"[OPTIMIZE] Step 4: Converting to JSON...")
         plans = []
         for idx, row in menu.iterrows():
             alloc_dict = {k: float(v) for k, v in row['alloc_tons'].items() if v > 1e-6}
@@ -340,6 +350,7 @@ async def optimize_procurement(request: OptimizeProcurementRequest):
                 "suppliers": row['suppliers'],
                 "alloc_tons": alloc_dict
             })
+        print(f"[OPTIMIZE] Step 4 complete: Returning {len(plans)} plans")
         
         return {
             "city": request.city,
@@ -351,4 +362,7 @@ async def optimize_procurement(request: OptimizeProcurementRequest):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_trace = traceback.format_exc()
+        print(f"[OPTIMIZE ERROR] Exception occurred:")
+        print(error_trace)
+        raise HTTPException(status_code=500, detail=f"Optimization failed: {str(e)}")
