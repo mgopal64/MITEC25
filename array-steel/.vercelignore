@@ -1,0 +1,5 @@
+backend/
+*.py
+*.pkl
+__pycache__/
+venv/
